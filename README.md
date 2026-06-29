@@ -4,112 +4,127 @@ PulseLite is a lightweight, real-time social media stream analytics platform. It
 
 ---
 
-## Architecture & Technology Stack
+🌟 What is PulseLite?
 
-```
-[Reddit / Simulator] -> (Kafka Topic: social_media_posts) -> [PySpark Processor] 
-                                                                     |
-                                                                     v
-[Streamlit Dashboard] <--------------------------------------- [PostgreSQL DB]
-```
+Brands and communities want to know what people are saying about them right now — not in tomorrow's batch report.
 
-- **Data Source / Producer**: A Python service that streams events. If configured with Reddit credentials, it streams live comments/submissions from configured subreddits (e.g. `r/india`, `r/cricket`). Otherwise, it falls back to a simulator that generates realistic social media posts with trending spikes (e.g. `#IndVsPak`, `#AppleEvent`, `#SuperBowl`) to demonstrate dynamic **topic drift**.
-- **Ingestion**: Apache Kafka running in KRaft mode (Kafka Raft metadata mode) to minimize container footprint.
-- **Processing Engine**: PySpark Structured Streaming. The processor consumes from Kafka in 5-second micro-batches, analyzes sentiment using the VADER Sentiment Analyzer, extracts entities (hashtags/mentions/capitalized nouns), and aggregates volume and topic words.
-- **Storage / Sink**: PostgreSQL database containing tables optimized for real-time upserts and indexed for fast retrieval.
-- **Visualization**: Streamlit web dashboard. It features an interactive layout with auto-refresh controls, filters to slice metrics by subreddit/topic, Plotly visualization charts, and a live post feed.
+PulseLite is a lightweight real-time pipeline that:
 
----
 
-## Metrics Extracted
+🔴 Streams live posts (Reddit API, with a simulated fallback generator)
+🧠 Scores sentiment and extracts trending entities, in real time
+📈 Tracks post volume per minute
+🚨 Flags sudden spikes with a built-in anomaly detector
+🖥️ Surfaces all of it on a live, auto-refreshing dashboard
 
-1. **Sentiment Analysis**: Tracks positive, negative, and neutral sentiments using the compound score computed by VADER.
-2. **Top Entities**: Counts and visualizes top trending hashtags/mentions/capitalized nouns over a rolling 5-minute window.
-3. **Ingestion Volume**: Computes post counts per minute to show pipeline throughput.
-4. **Topic Word Drift**: Tracks rolling word frequencies over a sliding 5-minute window to show how topics drift in real time.
 
----
+Built as the streaming foundation project for the Foundations of Data Engineering track — and the seed for a future "Clickstream Telemetry Pipeline" extension in 3rd year.
 
-## Setup & Running the Stack
 
-Make sure you have [Docker](https://www.docker.com/) and [Docker Compose](https://docs.docker.com/compose/) installed on your machine.
+🎬 Demo
 
-### 1. Configure the Environment (Optional)
-If you wish to use the real Reddit API, copy the environment template:
-```bash
-cp .env.example .env
-```
-Open `.env` in a text editor and fill in your Reddit API keys (register a script application at [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps/)).
+🎥 Loom walkthrough[add link once recorded]🌐 Live URL[add deployed link once live]
 
-*If you do not create a `.env` file or leave the credentials blank, PulseLite will automatically run in simulation mode. No setup is required for simulation!*
 
-### 2. Start the Stack
-Build and run all services in the background:
-```bash
-docker compose up --build -d
-```
+📐 Architecture
 
-This will spin up five containers:
-- `pulselite-postgres`: PostgreSQL database (port `5432` mapped to host)
-- `pulselite-kafka`: Kafka single-node broker (port `9092` mapped to host)
-- `pulselite-producer`: Python event generator (Reddit API wrapper or simulator)
-- `pulselite-processor`: PySpark streaming processor (runs the spark-submit job)
-- `pulselite-dashboard`: Streamlit web server (port `8501` mapped to host)
+<p align="center">
+  <img src="docs/architecture.png" alt="PulseLite Architecture Diagram" width="650"/>
+</p>
+Reddit API (or simulated post generator)
+        │  polls every N seconds
+        ▼
+   🟦 Kafka topic: raw_posts
+        │
+        ▼
+🔥 PySpark Structured Streaming job
+  ├─ 😊 sentiment scoring (VADER)
+  ├─ 🏷️  entity extraction (regex)
+  ├─ 📊 volume per minute
+  └─ 🚨 rolling 5-min avg → anomaly flag
+        │
+        ▼
+   🗄️  DuckDB (sink table)
+        │
+        ▼
+📺 Streamlit dashboard (auto-refresh)
 
-### 3. Open the Dashboard
-Once the services are running, open your browser and navigate to:
-```
-http://localhost:8501
-```
-The dashboard will auto-refresh (default: every 3 seconds) to show live updates as events flow through the pipeline. Use the sidebar to adjust the refresh rate or filter metrics by subreddit/topic!
 
-### 4. Verification & Diagnostics
-To inspect logs and ensure that services are running correctly:
-```bash
-# Check if all containers are healthy
-docker compose ps
+🛠️ Tech Stack
 
-# Monitor live producer output
-docker compose logs -f producer
+ComponentChoiceWhy📥 SourceReddit API (PRAW) / simulated generatorFree, real data, no approval bottleneck as fallback🟦 BrokerKafka (Docker Compose)Core streaming skill this project is testing🔥 ProcessingPySpark Structured StreamingPython-first, more forgiving than raw Kafka Streams😊 SentimentVADERLightweight, no training needed, good for short social text🗄️ SinkDuckDBZero-ops, file-based, fast to query from a dashboard📺 DashboardStreamlitQuick to build, native auto-refresh support🐳 OrchestrationDocker ComposeOne command brings up the whole stack
 
-# Monitor PySpark stream processor output
-docker compose logs -f processor
 
-# Query the PostgreSQL database directly
-docker exec -it pulselite-postgres psql -U postgres -d pulselite -c "SELECT * FROM processed_posts LIMIT 5;"
-```
+⚡ Quickstart
 
-### 5. Stopping the Stack
-To stop and clean up all resources:
-```bash
-docker compose down
-```
+Prerequisites
 
----
 
-## Folder Structure
+🐳 Docker + Docker Compose
+🐍 Python 3.11+
+🔑 (Optional) Reddit API credentials — falls back to a simulated generator if not provided
 
-```
-PulseLite/
-├── dashboard/
-│   ├── dashboard.py         # Streamlit dashboard script
-│   ├── Dockerfile
-│   └── requirements.txt
-├── postgres/
-│   └── schema.sql           # Database schema initialization script
-├── processor/
-│   ├── processor.py         # PySpark Structured Streaming script
-│   ├── Dockerfile
-│   ├── log4j.properties
-│   └── requirements.txt
-├── producer/
-│   ├── producer.py          # Reddit API poller or post simulator
-│   ├── Dockerfile
-│   └── requirements.txt
-├── .env.example             # Environment configuration template
-├── .gitignore
-├── docker-compose.yml
-├── IMPLEMENTATION.md        # Technical implementation & design choices
-└── README.md
-```
 
+Install
+
+bashgit clone https://github.com/<your-username>/PulseLite.git
+cd PulseLite
+pip install -r requirements.txt
+
+Run
+
+bashdocker compose up -d        # starts Kafka, Zookeeper, DuckDB volume
+python producer.py          # streams posts into Kafka
+python streaming_job.py     # runs the PySpark processing job
+streamlit run dashboard.py  # opens the live dashboard
+
+Test
+
+bashpytest tests/
+
+
+🔌 Data Sources
+
+SourceRoleReddit API (PRAW)Primary — polls subreddits like r/india / r/cricketSimulated generator (generator.py)Fallback — realistic fake posts (text, timestamp, subreddit, score) when Reddit is rate-limited
+
+
+🧠 ADRs
+
+ADRDecisionADR-001Kafka vs. direct processingADR-002DuckDB vs. PostgresADR-003VADER vs. a trained sentiment model
+
+
+🚨 Mini-Extension: Anomaly Detector
+
+
+Computes a rolling 5-minute average post volume per topic. If the current minute's volume exceeds 3× the rolling average, the dashboard flags it — highlighted row + log entry.
+
+
+
+Why it matters: spike detection is the simplest possible gateway into real-time monitoring & alerting — a core skill in production streaming systems.
+
+
+⚠️ Known Limitations
+
+
+No exactly-once delivery guarantees (at-least-once only)
+No handling of out-of-order / late-arriving events
+Single Kafka broker, no replication (fine for local/dev, not production-grade)
+Anomaly threshold (3×) is a fixed heuristic, not statistically tuned
+
+
+
+🗺️ What I'd Do in 3rd Year
+
+See docs/roadmap_3rd_year.md — planned extensions:
+
+
+✅ Exactly-once semantics
+✅ Watermark-based late-arrival handling
+✅ A second joined stream
+✅ Migration to Flink
+
+
+
+📄 License & Acknowledgements
+
+Released under the MIT License. Built as part of the Foundations of Data Engineering internship track — Problem H3: Real-time Hashtag Pulse.

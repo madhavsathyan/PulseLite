@@ -166,5 +166,6 @@ Released under the **MIT License**. Built as part of the *Foundations of Data En
 
 <div align="center">
 
+⭐ *If you found this useful for learning streaming pipelines, consider starring the repo!*
 
 </div>

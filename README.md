@@ -50,7 +50,7 @@ Built as the **streaming foundation** project for the *Foundations of Data Engin
 </p>
 
 ```
-Reddit API (or simulated post generator)
+  simulated post generator
         │  polls every N seconds
         ▼
    🟦 Kafka topic: raw_posts
@@ -75,7 +75,7 @@ Reddit API (or simulated post generator)
 
 | Component | Choice | Why |
 |---|---|---|
-| 📥 Source | Reddit API (PRAW) / simulated generator | Free, real data, no approval bottleneck as fallback |
+| 📥 Source | simulated data generator | Free, real data, no approval bottleneck as fallback |
 | 🟦 Broker | Kafka (Docker Compose) | Core streaming skill this project is testing |
 | 🔥 Processing | PySpark Structured Streaming | Python-first, more forgiving than raw Kafka Streams |
 | 😊 Sentiment | VADER | Lightweight, no training needed, good for short social text |
@@ -90,7 +90,7 @@ Reddit API (or simulated post generator)
 ### Prerequisites
 - 🐳 Docker + Docker Compose
 - 🐍 Python 3.11+
-- 🔑 (Optional) Reddit API credentials — falls back to a simulated generator if not provided
+  
 
 ### Install
 ```bash
@@ -118,7 +118,6 @@ pytest tests/
 
 | Source | Role |
 |---|---|
-| **Reddit API (PRAW)** | Primary — polls subreddits like `r/india` / `r/cricket` |
 | **Simulated generator** (`generator.py`) | Fallback — realistic fake posts (text, timestamp, subreddit, score) when Reddit is rate-limited |
 
 ---

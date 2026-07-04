@@ -1,5 +1,5 @@
 """
-PulseLite - Day 1-2 (Simulated Data Version)
+PulseLite -  (Simulated Data Version)
 
 Why simulated data instead of live Reddit?
 Reddit's public .json endpoint started returning 403 Blocked errors for

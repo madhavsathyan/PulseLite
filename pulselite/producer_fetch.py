@@ -1,5 +1,5 @@
 """
-PulseLite -  (Simulated Data Version)
+PulseLite - Day 1-2 (Simulated Data Version)
 
 Why simulated data instead of live Reddit?
 Reddit's public .json endpoint started returning 403 Blocked errors for
@@ -16,14 +16,19 @@ would have, so when we plug in Kafka in Day 3+, nothing downstream needs
 to change - we can swap this for a real API later with zero refactoring.
 """
 
+import json
 import random
 import time
 from datetime import datetime, timezone
+
+from kafka import KafkaProducer
 
 # --- Config ---
 SUBREDDIT = "india"
 POSTS_PER_BATCH = (1, 5)     # random number of "new" posts each tick
 POLL_INTERVAL_SECONDS = 10
+KAFKA_BROKER = "localhost:9092"
+KAFKA_TOPIC = "reddit-posts"
 
 TOPICS = [
     "cricket", "elections", "monsoon", "budget", "startup", "IPL",
@@ -107,7 +112,16 @@ def print_post(post: dict):
 
 def main():
     print(f"Starting PulseLite SIMULATED fetcher for r/{SUBREDDIT}")
-    print(f"Polling every {POLL_INTERVAL_SECONDS} seconds. Press Ctrl+C to stop.\n")
+    print(f"Connecting to Kafka at {KAFKA_BROKER}, topic '{KAFKA_TOPIC}'...")
+
+    # value_serializer converts our Python dict into JSON bytes automatically,
+    # since Kafka only knows how to move raw bytes around, not Python objects.
+    producer = KafkaProducer(
+        bootstrap_servers=KAFKA_BROKER,
+        value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+    )
+
+    print(f"Connected. Polling every {POLL_INTERVAL_SECONDS} seconds. Press Ctrl+C to stop.\n")
 
     while True:
         batch_size = random.randint(*POSTS_PER_BATCH)
@@ -116,7 +130,9 @@ def main():
         print(f"--- {len(new_posts)} new post(s) at {datetime.now(timezone.utc).strftime('%H:%M:%S')} UTC ---\n")
         for post in new_posts:
             print_post(post)
+            producer.send(KAFKA_TOPIC, value=post)
 
+        producer.flush()  # make sure everything is actually sent before we sleep
         time.sleep(POLL_INTERVAL_SECONDS)
 
 

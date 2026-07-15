@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📡 PulseLite
+# 📡 <b>PulseLite</b>
 
 ### Real-time sentiment & trend pulse — streamed, scored, and visualized live.
 

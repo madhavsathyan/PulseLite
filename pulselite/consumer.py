@@ -1,9 +1,17 @@
 """
-PulseLite - Day 4-8
+PulseLite - Day 4-8 (connection-per-write version)
 A Kafka consumer that watches the 'reddit-posts' topic, scores sentiment
 with VADER, extracts hashtag entities with regex, tracks volume per
 minute, computes rolling topic drift, detects volume anomalies per
 topic, and saves everything into DuckDB.
+
+Note on DuckDB connections: DuckDB is an embedded, single-writer database
+(no server process). Holding one long-lived connection open for the whole
+run blocks any other process (like our Streamlit dashboard) from reading
+the file at all. So instead of one connection for the whole script, we
+open a short-lived connection for each write and close it immediately -
+this keeps the lock held for milliseconds instead of the entire runtime,
+letting the dashboard read in between writes. See ADR-02 in the README.
 """
 
 import json
@@ -23,9 +31,8 @@ DB_PATH = "pulselite.db"
 DRIFT_WINDOW_SIZE = 50
 TOP_N_TOPICS = 5
 
-# --- Day 8: anomaly detection config ---
-ROLLING_MINUTES = 5      # how many past minutes count toward the "normal" average
-ANOMALY_MULTIPLIER = 3   # flag if current minute is > 3x the rolling average
+ROLLING_MINUTES = 5
+ANOMALY_MULTIPLIER = 3
 
 analyzer = SentimentIntensityAnalyzer()
 HASHTAG_PATTERN = re.compile(r"#(\w+)")
@@ -48,40 +55,76 @@ def label_sentiment(compound_score: float) -> str:
         return "neutral"
 
 
-def setup_database(con):
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS posts (
-            id VARCHAR PRIMARY KEY,
-            author VARCHAR,
-            title VARCHAR,
-            score INTEGER,
-            num_comments INTEGER,
-            created_utc TIMESTAMP,
-            minute_bucket TIMESTAMP,
-            sentiment_label VARCHAR,
-            sentiment_score DOUBLE,
-            entities VARCHAR[],
-            kafka_offset BIGINT
-        )
-    """)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS topic_drift (
-            computed_at TIMESTAMP,
-            topic VARCHAR,
-            mentions INTEGER,
-            rank INTEGER
-        )
-    """)
-    con.execute("""
-        CREATE TABLE IF NOT EXISTS anomalies (
-            detected_at TIMESTAMP,
-            topic VARCHAR,
-            minute_bucket TIMESTAMP,
-            current_volume INTEGER,
-            rolling_avg DOUBLE,
-            multiplier DOUBLE
-        )
-    """)
+def setup_database():
+    with duckdb.connect(DB_PATH) as con:
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS posts (
+                id VARCHAR PRIMARY KEY,
+                author VARCHAR,
+                title VARCHAR,
+                score INTEGER,
+                num_comments INTEGER,
+                created_utc TIMESTAMP,
+                minute_bucket TIMESTAMP,
+                sentiment_label VARCHAR,
+                sentiment_score DOUBLE,
+                entities VARCHAR[],
+                kafka_offset BIGINT
+            )
+        """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS topic_drift (
+                computed_at TIMESTAMP,
+                topic VARCHAR,
+                mentions INTEGER,
+                rank INTEGER
+            )
+        """)
+        con.execute("""
+            CREATE TABLE IF NOT EXISTS anomalies (
+                detected_at TIMESTAMP,
+                topic VARCHAR,
+                minute_bucket TIMESTAMP,
+                current_volume INTEGER,
+                rolling_avg DOUBLE,
+                multiplier DOUBLE
+            )
+        """)
+
+
+def save_post(post, title, created_dt, bucket, sentiment_label, sentiment_scores, entities, offset):
+    with duckdb.connect(DB_PATH) as db:
+        db.execute("""
+            INSERT OR REPLACE INTO posts
+            (id, author, title, score, num_comments, created_utc,
+             minute_bucket, sentiment_label, sentiment_score, entities, kafka_offset)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, [
+            post["id"], post["author"], title, post["score"], post["num_comments"],
+            created_dt, bucket, sentiment_label, sentiment_scores["compound"],
+            entities, offset,
+        ])
+
+
+def save_anomaly(topic, bucket, current_count, rolling_avg):
+    with duckdb.connect(DB_PATH) as db:
+        db.execute("""
+            INSERT INTO anomalies
+            (detected_at, topic, minute_bucket, current_volume, rolling_avg, multiplier)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, [
+            datetime.now(timezone.utc), topic, bucket,
+            current_count, rolling_avg, current_count / rolling_avg,
+        ])
+
+
+def save_drift_snapshot(now, top_topics):
+    with duckdb.connect(DB_PATH) as db:
+        for rank, (topic, mentions) in enumerate(top_topics, start=1):
+            db.execute("""
+                INSERT INTO topic_drift (computed_at, topic, mentions, rank)
+                VALUES (?, ?, ?, ?)
+            """, [now, topic, mentions, rank])
 
 
 def minute_bucket(dt: datetime) -> datetime:
@@ -103,14 +146,6 @@ class TopicDriftTracker:
 
 
 class TopicVolumeTracker:
-    """Tracks how many mentions each topic gets, per minute, and can
-    detect when the current minute is way above the recent normal.
-
-    topic_minute_counts[topic] is a deque of the last ROLLING_MINUTES
-    completed minutes' counts for that topic - this is our 'rolling
-    average' window.
-    """
-
     def __init__(self, rolling_minutes: int, multiplier: float):
         self.rolling_minutes = rolling_minutes
         self.multiplier = multiplier
@@ -125,8 +160,6 @@ class TopicVolumeTracker:
             self.current_minute_counts[topic] += 1
 
     def _roll_over(self, new_bucket: datetime):
-        """Called when a new minute starts: push the just-finished
-        minute's counts into history, then reset for the new minute."""
         if self.current_bucket is not None:
             for topic, count in self.current_minute_counts.items():
                 self.topic_minute_counts[topic].append(count)
@@ -134,16 +167,11 @@ class TopicVolumeTracker:
         self.current_bucket = new_bucket
 
     def check_anomalies(self) -> list:
-        """Compares the CURRENT (in-progress) minute's counts against
-        each topic's rolling average from previous minutes. Returns a
-        list of (topic, current_count, rolling_avg) for anything over
-        the threshold.
-        """
         anomalies = []
         for topic, current_count in self.current_minute_counts.items():
             history = self.topic_minute_counts[topic]
             if len(history) == 0:
-                continue  # not enough history yet to judge "normal"
+                continue
             rolling_avg = sum(history) / len(history)
             if rolling_avg > 0 and current_count > rolling_avg * self.multiplier:
                 anomalies.append((topic, current_count, rolling_avg))
@@ -161,8 +189,7 @@ def main():
         auto_offset_reset="earliest",
     )
 
-    con = duckdb.connect(DB_PATH)
-    setup_database(con)
+    setup_database()
     drift_tracker = TopicDriftTracker(DRIFT_WINDOW_SIZE)
     volume_tracker = TopicVolumeTracker(ROLLING_MINUTES, ANOMALY_MULTIPLIER)
 
@@ -171,7 +198,7 @@ def main():
     current_bucket = None
     current_bucket_count = 0
     posts_since_drift_print = 0
-    already_flagged = set()  # (topic, minute_bucket) pairs we've already alerted on
+    already_flagged = set()
 
     for message in consumer:
         post = message.value
@@ -183,16 +210,7 @@ def main():
         sentiment_label = label_sentiment(sentiment_scores["compound"])
         entities = extract_entities(title)
 
-        con.execute("""
-            INSERT OR REPLACE INTO posts
-            (id, author, title, score, num_comments, created_utc,
-             minute_bucket, sentiment_label, sentiment_score, entities, kafka_offset)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [
-            post["id"], post["author"], title, post["score"], post["num_comments"],
-            created_dt, bucket, sentiment_label, sentiment_scores["compound"],
-            entities, message.offset,
-        ])
+        save_post(post, title, created_dt, bucket, sentiment_label, sentiment_scores, entities, message.offset)
 
         drift_tracker.add(entities)
         volume_tracker.add(bucket, entities)
@@ -212,25 +230,17 @@ def main():
         print(f"    {title}")
         print("-" * 80)
 
-        # --- Day 8: anomaly detection, checked after every post ---
         for topic, current_count, rolling_avg in volume_tracker.check_anomalies():
             flag_key = (topic, bucket)
             if flag_key in already_flagged:
-                continue  # don't spam the same alert repeatedly within one minute
+                continue
             already_flagged.add(flag_key)
 
             print(f"\n🚨 ANOMALY DETECTED: #{topic} has {current_count} mentions this "
                   f"minute vs a rolling average of {rolling_avg:.1f} "
                   f"({current_count / rolling_avg:.1f}x normal)\n")
 
-            con.execute("""
-                INSERT INTO anomalies
-                (detected_at, topic, minute_bucket, current_volume, rolling_avg, multiplier)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, [
-                datetime.now(timezone.utc), topic, bucket,
-                current_count, rolling_avg, current_count / rolling_avg,
-            ])
+            save_anomaly(topic, bucket, current_count, rolling_avg)
 
         if posts_since_drift_print >= 10:
             posts_since_drift_print = 0
@@ -240,11 +250,9 @@ def main():
             print(f"\n### TRENDING NOW (last {len(drift_tracker.window)} posts) ###")
             for rank, (topic, mentions) in enumerate(top_topics, start=1):
                 print(f"  {rank}. #{topic} - {mentions} mentions")
-                con.execute("""
-                    INSERT INTO topic_drift (computed_at, topic, mentions, rank)
-                    VALUES (?, ?, ?, ?)
-                """, [now, topic, mentions, rank])
             print()
+
+            save_drift_snapshot(now, top_topics)
 
 
 if __name__ == "__main__":

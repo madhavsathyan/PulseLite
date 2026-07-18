@@ -9,6 +9,8 @@ services:
       ZOOKEEPER_TICK_TIME: 2000
     ports:
       - "2181:2181"
+    networks:
+      - pulselite-net
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -20,6 +22,63 @@ services:
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
+      # Two listeners: one for other containers (kafka:29092),
+      # one for tools on your actual laptop (localhost:9092).
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    networks:
+      - pulselite-net
+
+  producer:
+    build: .
+    container_name: pulselite-producer
+    depends_on:
+      - kafka
+    command: python producer_fetch.py
+    environment:
+      KAFKA_BROKER: kafka:29092
+    networks:
+      - pulselite-net
+    restart: on-failure
+
+  consumer:
+    build: .
+    container_name: pulselite-consumer
+    depends_on:
+      - kafka
+      - producer
+    command: python consumer.py
+    environment:
+      KAFKA_BROKER: kafka:29092
+      DB_PATH: /app/data/pulselite.db
+    volumes:
+      - pulselite-data:/app/data
+    networks:
+      - pulselite-net
+    restart: on-failure
+
+  dashboard:
+    build: .
+    container_name: pulselite-dashboard
+    depends_on:
+      - consumer
+    command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0
+    environment:
+      DB_PATH: /app/data/pulselite.db
+    ports:
+      - "8501:8501"
+    volumes:
+      - pulselite-data:/app/data
+    networks:
+      - pulselite-net
+
+networks:
+  pulselite-net:
+    driver: bridge
+
+volumes:
+  pulselite-data:

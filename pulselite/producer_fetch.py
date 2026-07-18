@@ -27,7 +27,8 @@ from kafka import KafkaProducer
 SUBREDDIT = "india"
 POSTS_PER_BATCH = (1, 5)     # random number of "new" posts each tick
 POLL_INTERVAL_SECONDS = 10
-KAFKA_BROKER = "localhost:9092"
+import os
+KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "localhost:9092")
 KAFKA_TOPIC = "reddit-posts"
 
 TOPICS = [

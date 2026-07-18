@@ -23,10 +23,11 @@ import duckdb
 from kafka import KafkaConsumer
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-KAFKA_BROKER = "localhost:9092"
+import os
+KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "localhost:9092")
 KAFKA_TOPIC = "reddit-posts"
 CONSUMER_GROUP = "pulselite-processors"
-DB_PATH = "pulselite.db"
+DB_PATH = os.environ.get("DB_PATH", "pulselite.db")
 
 DRIFT_WINDOW_SIZE = 50
 TOP_N_TOPICS = 5

@@ -14,7 +14,8 @@ import plotly.graph_objects as go
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
-DB_PATH = "pulselite.db"
+import os
+DB_PATH = os.environ.get("DB_PATH", "pulselite.db")
 REFRESH_INTERVAL_MS = 5000
 
 st.set_page_config(page_title="PulseLite", page_icon="📡", layout="wide")

@@ -64,15 +64,8 @@ with st.sidebar:
     st.caption("Built as part of the PulseLite streaming project")
 
 
-def get_connection():
-    return duckdb.connect(DB_PATH, read_only=True)
-
-
-st.title("📡 PulseLite — Real-Time Hashtag Pulse")
-st.caption("Live view of simulated social posts, updating every 5 seconds")
-
 try:
-    con = get_connection()
+    con = duckdb.connect(DB_PATH, read_only=True)
     total_posts = con.execute("SELECT COUNT(*) FROM posts").fetchone()[0]
 except Exception:
     st.warning("⏳ No data yet. Make sure `producer_fetch.py` and `consumer.py` are both running.")
@@ -227,3 +220,4 @@ if anomalies_df.empty:
     st.success("✅ No anomalies right now — everything's within normal range.")
 else:
     st.dataframe(anomalies_df, use_container_width=True, hide_index=True)
+con.close()

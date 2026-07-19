@@ -6,16 +6,17 @@ minute, computes rolling topic drift, detects volume anomalies per
 topic, and saves everything into DuckDB.
 
 Note on DuckDB connections: DuckDB is an embedded, single-writer database
-(no server process). Holding one long-lived connection open for the whole
-run blocks any other process (like our Streamlit dashboard) from reading
-the file at all. So instead of one connection for the whole script, we
-open a short-lived connection for each write and close it immediately -
-this keeps the lock held for milliseconds instead of the entire runtime,
-letting the dashboard read in between writes. See ADR-02 in the README.
+(no server process). We open a short-lived connection for each write and
+close it immediately - this keeps the lock held for milliseconds instead
+of the entire runtime. Even so, brief conflicts with the dashboard's read
+connection can still happen, so writes are wrapped in run_with_retry(),
+which retries a few times with a short backoff instead of crashing.
+See ADR-02 in the README.
 """
 
 import json
 import re
+import time as time_module
 from collections import Counter, deque, defaultdict
 from datetime import datetime, timezone
 
@@ -39,9 +40,24 @@ analyzer = SentimentIntensityAnalyzer()
 HASHTAG_PATTERN = re.compile(r"#(\w+)")
 
 
+def run_with_retry(fn, max_attempts=5, base_delay=0.2):
+    """Runs a DuckDB operation, retrying briefly if the file is
+    momentarily locked by another process (e.g. the dashboard reading
+    at the same instant). This is expected in a multi-process setup
+    with an embedded database - retrying is the standard fix, rather
+    than crashing the whole consumer over a millisecond-long conflict.
+    """
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fn()
+        except Exception as e:
+            if "lock" not in str(e).lower() or attempt == max_attempts:
+                raise
+            time_module.sleep(base_delay * attempt)
+
+
 def score_sentiment(text: str) -> dict:
     return analyzer.polarity_scores(text)
-
 
 def extract_entities(text: str) -> list:
     return HASHTAG_PATTERN.findall(text)
@@ -57,40 +73,42 @@ def label_sentiment(compound_score: float) -> str:
 
 
 def setup_database():
-    with duckdb.connect(DB_PATH) as con:
-        con.execute("""
-            CREATE TABLE IF NOT EXISTS posts (
-                id VARCHAR PRIMARY KEY,
-                author VARCHAR,
-                title VARCHAR,
-                score INTEGER,
-                num_comments INTEGER,
-                created_utc TIMESTAMP,
-                minute_bucket TIMESTAMP,
-                sentiment_label VARCHAR,
-                sentiment_score DOUBLE,
-                entities VARCHAR[],
-                kafka_offset BIGINT
-            )
-        """)
-        con.execute("""
-            CREATE TABLE IF NOT EXISTS topic_drift (
-                computed_at TIMESTAMP,
-                topic VARCHAR,
-                mentions INTEGER,
-                rank INTEGER
-            )
-        """)
-        con.execute("""
-            CREATE TABLE IF NOT EXISTS anomalies (
-                detected_at TIMESTAMP,
-                topic VARCHAR,
-                minute_bucket TIMESTAMP,
-                current_volume INTEGER,
-                rolling_avg DOUBLE,
-                multiplier DOUBLE
-            )
-        """)
+    def _do_setup():
+        with duckdb.connect(DB_PATH) as con:
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS posts (
+                    id VARCHAR PRIMARY KEY,
+                    author VARCHAR,
+                    title VARCHAR,
+                    score INTEGER,
+                    num_comments INTEGER,
+                    created_utc TIMESTAMP,
+                    minute_bucket TIMESTAMP,
+                    sentiment_label VARCHAR,
+                    sentiment_score DOUBLE,
+                    entities VARCHAR[],
+                    kafka_offset BIGINT
+                )
+            """)
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS topic_drift (
+                    computed_at TIMESTAMP,
+                    topic VARCHAR,
+                    mentions INTEGER,
+                    rank INTEGER
+                )
+            """)
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS anomalies (
+                    detected_at TIMESTAMP,
+                    topic VARCHAR,
+                    minute_bucket TIMESTAMP,
+                    current_volume INTEGER,
+                    rolling_avg DOUBLE,
+                    multiplier DOUBLE
+                )
+            """)
+    run_with_retry(_do_setup, max_attempts=10, base_delay=0.5)
 
 
 def save_post(post, title, created_dt, bucket, sentiment_label, sentiment_scores, entities, offset):
@@ -108,24 +126,28 @@ def save_post(post, title, created_dt, bucket, sentiment_label, sentiment_scores
 
 
 def save_anomaly(topic, bucket, current_count, rolling_avg):
-    with duckdb.connect(DB_PATH) as db:
-        db.execute("""
-            INSERT INTO anomalies
-            (detected_at, topic, minute_bucket, current_volume, rolling_avg, multiplier)
-            VALUES (?, ?, ?, ?, ?, ?)
-        """, [
-            datetime.now(timezone.utc), topic, bucket,
-            current_count, rolling_avg, current_count / rolling_avg,
-        ])
+    def _do_save():
+        with duckdb.connect(DB_PATH) as db:
+            db.execute("""
+                INSERT INTO anomalies
+                (detected_at, topic, minute_bucket, current_volume, rolling_avg, multiplier)
+                VALUES (?, ?, ?, ?, ?, ?)
+            """, [
+                datetime.now(timezone.utc), topic, bucket,
+                current_count, rolling_avg, current_count / rolling_avg,
+            ])
+    run_with_retry(_do_save)
 
 
 def save_drift_snapshot(now, top_topics):
-    with duckdb.connect(DB_PATH) as db:
-        for rank, (topic, mentions) in enumerate(top_topics, start=1):
-            db.execute("""
-                INSERT INTO topic_drift (computed_at, topic, mentions, rank)
-                VALUES (?, ?, ?, ?)
-            """, [now, topic, mentions, rank])
+    def _do_save():
+        with duckdb.connect(DB_PATH) as db:
+            for rank, (topic, mentions) in enumerate(top_topics, start=1):
+                db.execute("""
+                    INSERT INTO topic_drift (computed_at, topic, mentions, rank)
+                    VALUES (?, ?, ?, ?)
+                """, [now, topic, mentions, rank])
+    run_with_retry(_do_save)
 
 
 def minute_bucket(dt: datetime) -> datetime:

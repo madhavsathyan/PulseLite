@@ -39,7 +39,7 @@ Built as the **streaming foundation** project for the *Foundations of Data Engin
 | | |
 |---|---|
 | 🎥 **Loom walkthrough** | _[add link once recorded]_ |
-| 🌐 **Live URL** | _[add deployed link once live]_ |
+| 🌐 **Live URL** | _[http://localhost:8501/]_ |
 
 ---
 

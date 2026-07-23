@@ -20,6 +20,8 @@ REFRESH_INTERVAL_MS = 5000
 
 st.set_page_config(page_title="PulseLite", page_icon="📡", layout="wide")
 st_autorefresh(interval=REFRESH_INTERVAL_MS, key="refresh")
+if not os.environ.get("KAFKA_BROKER"):
+    st.info("📸 This is a static snapshot for demo purposes. The full pipeline (Kafka + live streaming) runs locally via `docker compose up` — see the README for the live version.")
 
 # ---------------------------------------------------------------
 # Small CSS tweaks: rounded metric cards + tighter spacing.
@@ -220,4 +222,3 @@ if anomalies_df.empty:
     st.success("✅ No anomalies right now — everything's within normal range.")
 else:
     st.dataframe(anomalies_df, use_container_width=True, hide_index=True)
-con.close()

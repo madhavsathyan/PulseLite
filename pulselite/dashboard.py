@@ -15,7 +15,8 @@ import streamlit as st
 from streamlit_autorefresh import st_autorefresh
 
 import os
-DB_PATH = os.environ.get("DB_PATH", "pulselite.db")
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.environ.get("DB_PATH", os.path.join(BASE_DIR, "pulselite.db"))
 REFRESH_INTERVAL_MS = 5000
 
 st.set_page_config(page_title="PulseLite", page_icon="📡", layout="wide")

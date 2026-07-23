@@ -39,7 +39,7 @@ Built as the **streaming foundation** project for the *Foundations of Data Engin
 | | |
 |---|---|
 | 🎥 **Loom walkthrough** | https://www.linkedin.com/posts/madhav-sathyan-944b3733a_dataengineering-kafka-streaming-ugcPost-7485765426162040832-rLUS/?utm_source=share&utm_medium=member_desktop&rcm=ACoAAFU9y4QBka-JdpAuX1sepDsBXYx8E4GRZk0 |
-| 🌐 **Live URL** | _[http://localhost:8501/]_ |
+| 🌐 **Live URL** | https://pulselite-nucqlvtxjkuberceodyclx.streamlit.app/ |
 
 ---
 

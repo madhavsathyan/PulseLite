@@ -53,7 +53,7 @@ Brands, communities, and applications need to know what users are expressing **i
 
 | Asset | Link |
 | :--- | :--- |
-| 🌐 **Live Hosted Dashboard** | [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pulselite-nucqlvtxjkuberceodyclx.streamlit.app/) |
+| 🌐 **Live Hosted Dashboard** |https://pulselite-9j5srszefmrgmff3rx8dn3.streamlit.app/ |
 | 🎥 **Loom Video Walkthrough** | [Watch on LinkedIn Post](https://www.linkedin.com/posts/madhav-sathyan-944b3733a_dataengineering-kafka-streaming-ugcPost-7485765426162040832-rLUS/) |
 
 ---

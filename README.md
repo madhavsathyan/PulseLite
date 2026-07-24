@@ -42,18 +42,40 @@ Built as the **streaming foundation** project for the *Foundations of Data Engin
 | 🌐 **Live URL** | https://pulselite-9j5srszefmrgmff3rx8dn3.streamlit.app/|
 
 ---
+🏗️ Architecture
+Simulated Social Posts (producer_fetch.py)
+        │
+        ▼
+   Kafka Topic: reddit-posts
+   (Zookeeper + Kafka, via Docker Compose)
+        │
+        ▼
+   Stream Processor (consumer.py)
+   ┌─────────────────────────────────────┐
+   │  Sentiment scoring (VADER)          │
+   │  Entity extraction (regex hashtags) │
+   │  Volume-per-minute tracking          │
+   │  Rolling topic drift (last 50 posts) │
+   │  Anomaly detection (3x rolling avg) │
+   └─────────────────────────────────────┘
+        │
+        ▼
+   DuckDB (pulselite.db)
+        │
+        ▼
+   Dashboard (Streamlit + Plotly)
+   ┌─────────────────────────────────────┐
+   │  Headline metrics (volume, mood)    │
+   │  Volume-per-minute chart            │
+   │  Sentiment-over-time chart          │
+   │  Top entities + topic drift table   │
+   │  Anomaly alert log                  │
+   └─────────────────────────────────────┘
+        │
+        ▼
+   Deployed on Streamlit Cloud (Free)
 
-## 📐 Architecture
-
-```
-producer_fetch.py  ──▶  Kafka (reddit-posts topic)  ──▶  consumer.py
-                                                              │
-                                                              ▼
-                                                    pulselite.db (DuckDB)
-                                                              │
-                                                              ▼
-                                                    dashboard.py (Streamlit)
-```
+📄 Everything above — Kafka, Zookeeper, producer, consumer, dashboard — starts with a single command: docker compose up.
 
 - **`producer_fetch.py`** — generates realistic simulated social posts and publishes them to Kafka
 - **Kafka + Zookeeper** — the message broker, run via Docker Compose
@@ -108,50 +130,133 @@ streamlit run dashboard.py     # opens dashboard at http://localhost:8501
 pip install -r requirements.txt
 streamlit run dashboard.py     # reads from bundled pulselite.db snapshot
 ```
+📊 Data Source
+Data	Source	Format
+Social posts	Simulated generator	JSON via Kafka
+Schema	Matches real Reddit post structure exactly	id, title, author, score, num_comments, created_utc, subreddit, url
 
+Data is simulated but realistic — varied sentiment (positive/negative/neutral) and embedded hashtags, generated in the same schema a real Reddit post would have. This means a real API can be swapped in later with zero changes downstream. Full reasoning: ADR-01.
 ---
 
-## 🚨 Anomaly Detector
+📁 Folder Structure
+pulselite/
+│
+├── producer_fetch.py       # Generates simulated posts, publishes to Kafka
+├── consumer.py              # Kafka consumer: sentiment, entities, volume, drift, anomalies, DuckDB writes
+├── dashboard.py              # Streamlit live dashboard
+├── docker-compose.yml       # Full 5-service stack (Zookeeper, Kafka, producer, consumer, dashboard)
+├── Dockerfile                # Shared image for producer/consumer/dashboard
+├── requirements.txt          # Python dependencies
+├── README.md                  # This file
+│
+├── .streamlit/
+│   └── config.toml            # Dashboard theme
+│
+├── data/                       # DuckDB file lives here (git-ignored, generated at runtime)
+│
+└── docs/
+    ├── ADR-01-data-source.md
+    ├── ADR-02-duckdb-connections.md
+    ├── ADR-03-vader-sentiment.md
+    └── ADR-04-duckdb-concurrency-fix.md
+    
+📈 Dashboard Features
+Headline Metrics
+Total posts processed, posts in the latest minute
+Overall mood (average sentiment, color-coded)
+Anomalies flagged so far
+Volume & Sentiment
+Volume-per-minute bar chart — the same signal the anomaly detector watches
+Sentiment-over-time line chart, with a zero line marking positive vs negative
+Topics & Drift
+Top 10 all-time hashtags (bar chart)
+Trending Now vs a Few Minutes Ago — a live comparison table with 🔺🔻➖ trend indicators, showing topic drift as it happens
+Anomaly Alerts
+Log of every topic whose volume spiked past 3x its 5-minute rolling average, with the exact multiplier
 
-> Computes a rolling **5-minute average** post volume per topic. If the current minute's volume exceeds **3× the rolling average**, the dashboard flags it — highlighted row + log entry.
+➕ Mini-Extension — Anomaly Detector
 
-**Why it matters:** spike detection is the simplest possible gateway into real-time monitoring & alerting — a core skill in production streaming systems.
+What it is: A rolling-average volume monitor per topic, running inside consumer.py.
 
----
+What it does:
 
-## 🧠 ADRs
+Tracks each hashtag's mention count per completed minute (last 5 minutes of history)
+Compares the current minute's count against that rolling average
+Flags and logs anything exceeding 3x normal — both to the console and to a dedicated anomalies table in DuckDB
 
-Architecture Decision Records explaining every major technical choice:
+Why it matters: This is the same core pattern behind real production alerting systems — the gateway concept from "here's what happened" to "here's what needs attention right now." It's a small addition (~40 lines) that demonstrates real stream-monitoring thinking, not just data plumbing.
 
-| ADR | Decision |
-|---|---|
-| [ADR-01](docs/ADR-01-data-source.md) | Simulated data instead of live Reddit API |
-| [ADR-02](docs/ADR-02-duckdb-connections.md) | DuckDB with per-write connections instead of a database server |
-| [ADR-03](docs/ADR-03-vader-sentiment.md) | VADER instead of a transformer model for sentiment |
-| [ADR-04](docs/ADR-04-duckdb-concurrency-fix.md) | Resolving DuckDB lock contention between consumer and dashboard |
+📝 What I Learned
 
----
+Week 1 — Ingestion:
 
-## ⚠️ Known Limitations
+Reddit's public API blocks automated scraping harder than expected — learned to pivot to a documented alternative (simulated data) rather than get stuck waiting on external approval
+Kafka fundamentals: topics, producers, consumers, consumer groups
+Docker Compose basics — multi-container networking, why localhost means something different inside vs outside a container
 
-- No exactly-once delivery guarantees (at-least-once only)
-- No handling of out-of-order / late-arriving events
-- Single Kafka broker, no replication (fine for local/dev, not production-grade)
-- Anomaly threshold (3×) is a fixed heuristic, not statistically tuned
+Week 2 — Processing:
 
----
+VADER sentiment scoring and why rule-based tools beat transformer models for low-latency streaming
+Rolling-window aggregation for topic drift and per-minute volume
+Anomaly detection using a rolling average and threshold multiplier
 
-## 🗺️ What I'd Do in 3rd Year
+Week 3 — Storage & Visualization:
 
-Planned extensions (see [`docs/`](docs/) for background):
-- ✅ Exactly-once semantics end-to-end
-- ✅ Watermark-based late-arrival handling
-- ✅ A second joined stream (stream-stream join)
-- ✅ Migration from Kafka consumer groups to Flink
-- ✅ This becomes the foundation for a full **Clickstream Telemetry Pipeline**
+DuckDB as an embedded, server-free database — and its single-writer concurrency model
+Debugged a real lock-contention bug where a long-lived dashboard connection blocked the consumer's writes; fixed with explicit connection closing and retry-with-backoff logic
+Streamlit auto-refresh patterns for building a genuinely live dashboard
 
----
+Week 4 — Deployment & Polish:
 
-## 📄 License & Acknowledgements
+Full Docker Compose containerization — Kafka, producer, consumer, and dashboard all starting from one command
+Deploying to Streamlit Cloud, and why relative file paths behave differently in the cloud vs locally
+Writing ADRs to document real engineering tradeoffs, not just decisions made in hindsight
+📄 Documents
+Document	Link
+ADR-01: Simulated data instead of live Reddit	docs/ADR-01-data-source.md
+ADR-02: DuckDB with per-write connections	docs/ADR-02-duckdb-connections.md
+ADR-03: VADER instead of a transformer model	docs/ADR-03-vader-sentiment.md
+ADR-04: Resolving DuckDB lock contention	docs/ADR-04-duckdb-concurrency-fix.md
+🚀 3rd Year Extension Plan
 
-Released under the **MIT License**. Built by **Madhav Sathyan** as part of the *Foundations of Data Engineering* internship track — Problem **H3: Real-time Hashtag Pulse**.
+This project is the seed of a 3rd year clickstream telemetry portfolio. Here's where it goes:
+
+Timeline	What gets added
+Next	Exactly-once delivery semantics end-to-end
+Next	Late-arrival handling with watermarks
+Later	A second stream with stream-stream joins
+Later	Migrate from Kafka consumer groups to Apache Flink
+3rd year internship	Full B2 Clickstream Telemetry Pipeline — same architecture, real scale
+
+⚠️ Known Limitations
+Data source is simulated, not a live external API (documented tradeoff — see ADR-01)
+The hosted Streamlit Cloud demo is a static snapshot, since the cloud host can't run Kafka/Docker — the full live pipeline only runs locally via docker compose up
+No exactly-once delivery guarantees — a message could theoretically be processed more than once
+Topic drift uses a fixed post-count window (last 50 posts), not a strict time-based window
+No authentication — this is a single-user demo tool, not a multi-tenant product
+
+💼 Resume Bullets
+- Built PulseLite, a real-time streaming pipeline processing social media
+  posts through Kafka, with VADER sentiment scoring, regex-based entity
+  extraction, rolling topic-drift detection, and volume anomaly alerts
+
+- Designed and containerized a 5-service pipeline (Kafka, Zookeeper,
+  producer, consumer, dashboard) with Docker Compose; diagnosed and
+  resolved a DuckDB concurrency bug causing consumer crash-loops via
+  connection-lifecycle management and retry-with-backoff logic
+
+- Documented 4 Architecture Decision Records covering data-source
+  tradeoffs, database concurrency, and model selection, and deployed a
+  live public demo on Streamlit Cloud
+👤 About
+
+Name: Madhav Sathyan Track: 2nd Year Data Engineering Internship Project: H3 — Real-Time Hashtag Pulse (Streaming Starter)
+
+📜 License
+
+MIT License — see LICENSE
+
+🙏 Acknowledgements
+TrendWatch (fictional client scenario) — internship problem framework
+Apache Kafka, DuckDB, Streamlit — open-source tools that made this possible
+Internship mentor — for guidance through every debugging session, especially the DuckDB concurrency saga

@@ -2,261 +2,243 @@
 
 # 📡 **PulseLite**
 
-### Real-time sentiment & trend pulse — streamed, scored, and visualized live.
+### *Real-Time Sentiment & Trend Pulse Engine*
 
-*Kafka → Consumer → DuckDB → Live Dashboard*
+Streamed, scored, and visualized live with Kafka, VADER, DuckDB, and Streamlit.
 
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB?style=flat&logo=python&logoColor=white)](https://www.python.org/)
-[![Kafka](https://img.shields.io/badge/Kafka-Streaming-231F20?style=flat&logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
-[![Streamlit](https://img.shields.io/badge/Dashboard-Streamlit-FF4B4B?style=flat&logo=streamlit&logoColor=white)](https://streamlit.io/)
-[![Docker](https://img.shields.io/badge/Deployed%20with-Docker%20Compose-2496ED?style=flat&logo=docker&logoColor=white)](https://www.docker.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Apache Kafka](https://img.shields.io/badge/Kafka-Streaming-231F20?style=for-the-badge&logo=apachekafka&logoColor=white)](https://kafka.apache.org/)
+[![DuckDB](https://img.shields.io/badge/DuckDB-Analytics-FFF000?style=for-the-badge&logo=duckdb&logoColor=black)](https://duckdb.org/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-Live%20Dashboard-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white)](https://streamlit.io/)
+[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=for-the-badge&logo=docker&logoColor=white)](https://www.docker.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-**[🎥 Watch the Demo](#-demo)** · **[📐 Architecture](#-architecture)** · **[⚡ Quickstart](#-quickstart)** · **[🧠 ADRs](#-adrs)**
+<br/>
 
-</div>
+[🎬 Demo & Live Link](#-demo) · [📐 System Architecture](#-system-architecture) · [⚡ Quickstart Guide](#-quickstart-guide) · [🧠 ADRs](#-architecture-decision-records-adrs) · [🗺️ Roadmap](#️-roadmap)
 
 ---
 
-## 🌟 What is PulseLite?
+</div>
 
-Brands and communities want to know what people are saying about them **right now** — not in tomorrow's batch report.
+## 🌟 Overview
 
-**PulseLite** is a lightweight real-time pipeline that:
-- 🔴 Streams live posts (simulated social feed, Reddit-compatible schema)
-- 🧠 Scores sentiment per post using VADER (-1 to +1)
-- 🏷️ Extracts trending entities (hashtags) using regex
-- 📈 Tracks post volume per minute
-- 🚨 Flags sudden spikes with a rolling 5-min anomaly detector
-- 🖥️ Surfaces everything on a live, auto-refreshing Streamlit dashboard
+Brands, communities, and applications need to know what users are expressing **in real-time** — not hours later in a batch ETL process. 
 
-Built as the **streaming foundation** project for the *Foundations of Data Engineering* track — and the seed for a future "Clickstream Telemetry Pipeline" extension.
+**PulseLite** is an end-to-end real-time streaming telemetry pipeline designed to capture live post feeds, compute instant sentiment analytics, track hashtag volume, detect topic drift, and trigger automatic anomaly alerts on a dynamic live dashboard.
+
+> [!NOTE]
+> Built as the core **Streaming Foundation** project for the *Foundations of Data Engineering* internship track (Problem **H3: Real-Time Hashtag Pulse**).
+
+---
+
+## ⚡ Key Features
+
+| Feature | Description |
+| :--- | :--- |
+| 🔴 **Live Data Streaming** | Real-time social post generator pushing JSON payloads directly to an Apache Kafka topic. |
+| 🧠 **VADER Sentiment Scoring** | Fast, rule-based NLP engine assigning compound sentiment scores (-1.0 to +1.0) to incoming posts. |
+| 🏷️ **Entity & Hashtag Tagging** | Regex-based extraction identifying trending topics and entity spikes on the fly. |
+| 📈 **Minute-Granularity Metrics** | Aggregates volume per minute, tracks rolling sentiment averages, and monitors topic drift. |
+| 🚨 **Automated Anomaly Alerts** | Rolling 5-minute window anomaly detector flagging volume spikes ($>3\times$ baseline average). |
+| ⚡ **Zero-Ops Analytics Sink** | High-throughput, concurrent writes and reads powered by embedded DuckDB storage. |
+| 📊 **Self-Refreshing Dashboard** | Streamlit web UI auto-updating every 3 seconds with interactive Plotly visualizations. |
 
 ---
 
 ## 🎬 Demo
 
-| | |
-|---|---|
-| 🎥 **Loom walkthrough** | https://www.linkedin.com/posts/madhav-sathyan-944b3733a_dataengineering-kafka-streaming-ugcPost-7485765426162040832-rLUS/?utm_source=share&utm_medium=member_desktop&rcm=ACoAAFU9y4QBka-JdpAuX1sepDsBXYx8E4GRZk0 |
-| 🌐 **Live URL** | https://pulselite-9j5srszefmrgmff3rx8dn3.streamlit.app/|
+> [!TIP]
+> Try out the live hosted dashboard or watch the full video walkthrough below!
 
----
-🏗️ Architecture
-Simulated Social Posts (producer_fetch.py)
-        │
-        ▼
-   Kafka Topic: reddit-posts
-   (Zookeeper + Kafka, via Docker Compose)
-        │
-        ▼
-   Stream Processor (consumer.py)
-   ┌─────────────────────────────────────┐
-   │  Sentiment scoring (VADER)          │
-   │  Entity extraction (regex hashtags) │
-   │  Volume-per-minute tracking          │
-   │  Rolling topic drift (last 50 posts) │
-   │  Anomaly detection (3x rolling avg) │
-   └─────────────────────────────────────┘
-        │
-        ▼
-   DuckDB (pulselite.db)
-        │
-        ▼
-   Dashboard (Streamlit + Plotly)
-   ┌─────────────────────────────────────┐
-   │  Headline metrics (volume, mood)    │
-   │  Volume-per-minute chart            │
-   │  Sentiment-over-time chart          │
-   │  Top entities + topic drift table   │
-   │  Anomaly alert log                  │
-   └─────────────────────────────────────┘
-        │
-        ▼
-   Deployed on Streamlit Cloud (Free)
-
-📄 Everything above — Kafka, Zookeeper, producer, consumer, dashboard — starts with a single command: docker compose up.
-
-- **`producer_fetch.py`** — generates realistic simulated social posts and publishes them to Kafka
-- **Kafka + Zookeeper** — the message broker, run via Docker Compose
-- **`consumer.py`** — reads posts from Kafka, runs sentiment / entity / volume / drift / anomaly processing, writes results to DuckDB
-- **`pulselite.db`** — a local DuckDB file storing all processed posts, topic drift snapshots, and anomaly events
-- **`dashboard.py`** — a Streamlit app reading directly from DuckDB, auto-refreshing every 5 seconds
+| Asset | Link |
+| :--- | :--- |
+| 🌐 **Live Hosted Dashboard** | [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://pulselite-nucqlvtxjkuberceodyclx.streamlit.app/) |
+| 🎥 **Loom Video Walkthrough** | [Watch on LinkedIn Post](https://www.linkedin.com/posts/madhav-sathyan-944b3733a_dataengineering-kafka-streaming-ugcPost-7485765426162040832-rLUS/) |
 
 ---
 
-## 🛠️ Tech Stack
+## 📐 System Architecture
 
-| Component | Choice | Why |
-|---|---|---|
-| 📥 Source | Simulated data generator | Free, realistic, no API approval bottleneck |
-| 🟦 Broker | Kafka (Docker Compose) | Core streaming skill this project tests |
-| 😊 Sentiment | VADER | Lightweight, no training needed, great for short social text |
-| 🗄️ Sink | DuckDB | Zero-ops, file-based, fast to query from a dashboard |
-| 📺 Dashboard | Streamlit | Quick to build, native auto-refresh support |
-| 🐳 Orchestration | Docker Compose | One command brings up the whole stack |
+```mermaid
+flowchart LR
+    A["📡 Data Producer<br/>(producer_fetch.py)"] -->|Streams JSON| B["🐘 Apache Kafka<br/>(reddit-posts topic)"]
+    B -->|Consumer Group| C["🧠 Stream Processor<br/>(consumer.py)"]
+    
+    subgraph Processor Engine
+        C --> D["😊 VADER Sentiment Scoring"]
+        C --> E["🏷️ Regex Entity Extraction"]
+        C --> F["🚨 5-Min Anomaly Detector"]
+    end
+
+    D --> G[("🗄️ DuckDB Database<br/>(pulselite.db)")]
+    E --> G
+    F --> G
+    
+    G -->|3s Auto-Refresh| H["📊 Streamlit Dashboard<br/>(dashboard.py)"]
+```
+
+### Component Breakdown
+
+1. **`producer_fetch.py`**: Simulates realistic, multi-topic social posts (Reddit-compatible schema) and pushes messages to Kafka at configurable rates.
+2. **Apache Kafka & ZooKeeper**: Containerized event broker managing stream buffers and consumer subscriptions.
+3. **`consumer.py`**: Multi-stage consumer performing real-time sentiment scoring, hashtag/entity extraction, topic drift calculation, and anomaly detection. Writes clean datasets to DuckDB.
+4. **`pulselite.db` (DuckDB)**: Embedded analytical store optimized for concurrent writes from the consumer and low-latency queries from the dashboard.
+5. **`dashboard.py`**: Streamlit application providing live metric cards, sentiment distributions, topic volume timelines, and highlighted anomaly logs.
 
 ---
 
-## ⚡ Quickstart
+## 🛠️ Tech Stack & Design Choices
+
+| Layer | Component | Technical Justification |
+| :--- | :--- | :--- |
+| **Ingestion** | `Python` (Simulated Generator) | Eliminates external API rate limits while maintaining schema realistic to production feeds. |
+| **Message Broker** | `Apache Kafka` | De-facto industry standard for distributed event streaming and message queuing. |
+| **NLP Engine** | `VADER` | Extremely lightweight, sub-millisecond execution tuned specifically for social media micro-text. |
+| **Storage Sink** | `DuckDB` | Embedded OLAP engine providing serverless, zero-maintenance, file-based column store performance. |
+| **Visualization** | `Streamlit` + `Plotly` | Reactive UI framework enabling auto-refreshing charts and rapid prototyping. |
+| **Infrastructure** | `Docker Compose` | Single-command orchestration for ZooKeeper, Kafka, Producer, Consumer, and Dashboard services. |
+
+---
+
+## 📁 Repository Structure
+
+```directory
+PulseLite/
+├── 📄 docker-compose.yml     # Multi-container orchestration (Kafka, ZooKeeper, App services)
+├── 📄 Dockerfile             # Container definition for pipeline components
+├── 📄 producer_fetch.py      # Kafka producer generating synthetic live post streams
+├── 📄 consumer.py            # Stream consumer, VADER engine, anomaly detector & DuckDB writer
+├── 📄 dashboard.py           # Streamlit live telemetry dashboard interface
+├── 📄 requirements.txt       # Python dependencies (duckdb, streamlit, nltk, kafka-python, etc.)
+├── 📄 pulselite.db           # Bundled DuckDB snapshot for standalone demo mode
+├── 📁 docs/                  # Architecture Decision Records (ADRs)
+│   ├── 📄 ADR-01-data-source.md
+│   ├── 📄 ADR-02-duckdb-connections.md
+│   ├── 📄 ADR-03-vader-sentiment.md
+│   └── 📄 ADR-04-duckdb-concurrency-fix.md
+└── 📁 .streamlit/            # Streamlit theme and configuration
+```
+
+---
+
+## ⚡ Quickstart Guide
 
 ### Prerequisites
-- 🐳 Docker + Docker Compose
-- 🐍 Python 3.10+
+- 🐳 **Docker & Docker Compose** (Recommended)
+- 🐍 **Python 3.10+** (Required for local installation)
 
-### Install
-```bash
-git clone https://github.com/madhavsathyan/PulseLite.git
-cd PulseLite
-python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate     # Mac/Linux
-pip install -r requirements.txt
-```
-
-### Run (full live pipeline)
-```bash
-# 1. Start Kafka + Zookeeper
-docker compose up -d
-
-# 2. In separate terminals:
-python producer_fetch.py       # streams posts into Kafka
-python consumer.py             # processes & writes to DuckDB
-streamlit run dashboard.py     # opens dashboard at http://localhost:8501
-```
-
-### Run (demo snapshot — no Docker needed)
-```bash
-pip install -r requirements.txt
-streamlit run dashboard.py     # reads from bundled pulselite.db snapshot
-```
-📊 Data Source
-Data	Source	Format
-Social posts	Simulated generator	JSON via Kafka
-Schema	Matches real Reddit post structure exactly	id, title, author, score, num_comments, created_utc, subreddit, url
-
-Data is simulated but realistic — varied sentiment (positive/negative/neutral) and embedded hashtags, generated in the same schema a real Reddit post would have. This means a real API can be swapped in later with zero changes downstream. Full reasoning: ADR-01.
 ---
 
-📁 Folder Structure
-pulselite/
-│
-├── producer_fetch.py       # Generates simulated posts, publishes to Kafka
-├── consumer.py              # Kafka consumer: sentiment, entities, volume, drift, anomalies, DuckDB writes
-├── dashboard.py              # Streamlit live dashboard
-├── docker-compose.yml       # Full 5-service stack (Zookeeper, Kafka, producer, consumer, dashboard)
-├── Dockerfile                # Shared image for producer/consumer/dashboard
-├── requirements.txt          # Python dependencies
-├── README.md                  # This file
-│
-├── .streamlit/
-│   └── config.toml            # Dashboard theme
-│
-├── data/                       # DuckDB file lives here (git-ignored, generated at runtime)
-│
-└── docs/
-    ├── ADR-01-data-source.md
-    ├── ADR-02-duckdb-connections.md
-    ├── ADR-03-vader-sentiment.md
-    └── ADR-04-duckdb-concurrency-fix.md
-    
-📈 Dashboard Features
-Headline Metrics
-Total posts processed, posts in the latest minute
-Overall mood (average sentiment, color-coded)
-Anomalies flagged so far
-Volume & Sentiment
-Volume-per-minute bar chart — the same signal the anomaly detector watches
-Sentiment-over-time line chart, with a zero line marking positive vs negative
-Topics & Drift
-Top 10 all-time hashtags (bar chart)
-Trending Now vs a Few Minutes Ago — a live comparison table with 🔺🔻➖ trend indicators, showing topic drift as it happens
-Anomaly Alerts
-Log of every topic whose volume spiked past 3x its 5-minute rolling average, with the exact multiplier
+### Option 1: Full Streaming Pipeline (Docker Compose) 🚀
 
-➕ Mini-Extension — Anomaly Detector
+To run the complete end-to-end pipeline with Kafka, consumer, and live auto-refreshing UI:
 
-What it is: A rolling-average volume monitor per topic, running inside consumer.py.
+```bash
+# 1. Clone repository
+git clone https://github.com/madhavsathyan/PulseLite.git
+cd PulseLite
 
-What it does:
+# 2. Launch the entire containerized stack
+docker compose up -d
+```
 
-Tracks each hashtag's mention count per completed minute (last 5 minutes of history)
-Compares the current minute's count against that rolling average
-Flags and logs anything exceeding 3x normal — both to the console and to a dedicated anomalies table in DuckDB
+Access the live dashboard at: **`http://localhost:8501`**
 
-Why it matters: This is the same core pattern behind real production alerting systems — the gateway concept from "here's what happened" to "here's what needs attention right now." It's a small addition (~40 lines) that demonstrates real stream-monitoring thinking, not just data plumbing.
+---
 
-📝 What I Learned
+### Option 2: Local Development Setup 🐍
 
-Week 1 — Ingestion:
+Run the services directly on your host machine:
 
-Reddit's public API blocks automated scraping harder than expected — learned to pivot to a documented alternative (simulated data) rather than get stuck waiting on external approval
-Kafka fundamentals: topics, producers, consumers, consumer groups
-Docker Compose basics — multi-container networking, why localhost means something different inside vs outside a container
+#### 1. Setup Virtual Environment
+```bash
+python -m venv venv
 
-Week 2 — Processing:
+# On Windows (PowerShell):
+.\venv\Scripts\activate
 
-VADER sentiment scoring and why rule-based tools beat transformer models for low-latency streaming
-Rolling-window aggregation for topic drift and per-minute volume
-Anomaly detection using a rolling average and threshold multiplier
+# On macOS / Linux:
+source venv/bin/activate
 
-Week 3 — Storage & Visualization:
+pip install -r requirements.txt
+```
 
-DuckDB as an embedded, server-free database — and its single-writer concurrency model
-Debugged a real lock-contention bug where a long-lived dashboard connection blocked the consumer's writes; fixed with explicit connection closing and retry-with-backoff logic
-Streamlit auto-refresh patterns for building a genuinely live dashboard
+#### 2. Start Infrastructure & Pipelines
+```bash
+# Terminal 1: Spin up Kafka & Zookeeper containers
+docker compose up -d zookeeper kafka
 
-Week 4 — Deployment & Polish:
+# Terminal 2: Start data streaming producer
+python producer_fetch.py
 
-Full Docker Compose containerization — Kafka, producer, consumer, and dashboard all starting from one command
-Deploying to Streamlit Cloud, and why relative file paths behave differently in the cloud vs locally
-Writing ADRs to document real engineering tradeoffs, not just decisions made in hindsight
-📄 Documents
-Document	Link
-ADR-01: Simulated data instead of live Reddit	docs/ADR-01-data-source.md
-ADR-02: DuckDB with per-write connections	docs/ADR-02-duckdb-connections.md
-ADR-03: VADER instead of a transformer model	docs/ADR-03-vader-sentiment.md
-ADR-04: Resolving DuckDB lock contention	docs/ADR-04-duckdb-concurrency-fix.md
-🚀 3rd Year Extension Plan
+# Terminal 3: Start consumer & stream processor
+python consumer.py
 
-This project is the seed of a 3rd year clickstream telemetry portfolio. Here's where it goes:
+# Terminal 4: Start interactive dashboard
+streamlit run dashboard.py
+```
 
-Timeline	What gets added
-Next	Exactly-once delivery semantics end-to-end
-Next	Late-arrival handling with watermarks
-Later	A second stream with stream-stream joins
-Later	Migrate from Kafka consumer groups to Apache Flink
-3rd year internship	Full B2 Clickstream Telemetry Pipeline — same architecture, real scale
+---
 
-⚠️ Known Limitations
-Data source is simulated, not a live external API (documented tradeoff — see ADR-01)
-The hosted Streamlit Cloud demo is a static snapshot, since the cloud host can't run Kafka/Docker — the full live pipeline only runs locally via docker compose up
-No exactly-once delivery guarantees — a message could theoretically be processed more than once
-Topic drift uses a fixed post-count window (last 50 posts), not a strict time-based window
-No authentication — this is a single-user demo tool, not a multi-tenant product
+### Option 3: Standalone Demo Mode (Zero-Docker) 📸
 
-💼 Resume Bullets
-- Built PulseLite, a real-time streaming pipeline processing social media
-  posts through Kafka, with VADER sentiment scoring, regex-based entity
-  extraction, rolling topic-drift detection, and volume anomaly alerts
+> [!IMPORTANT]
+> Want to explore the dashboard immediately without starting Docker or Kafka? You can launch Streamlit using the bundled `pulselite.db` snapshot.
 
-- Designed and containerized a 5-service pipeline (Kafka, Zookeeper,
-  producer, consumer, dashboard) with Docker Compose; diagnosed and
-  resolved a DuckDB concurrency bug causing consumer crash-loops via
-  connection-lifecycle management and retry-with-backoff logic
+```bash
+pip install -r requirements.txt
+streamlit run dashboard.py
+```
 
-- Documented 4 Architecture Decision Records covering data-source
-  tradeoffs, database concurrency, and model selection, and deployed a
-  live public demo on Streamlit Cloud
-👤 About
+---
 
-Name: Madhav Sathyan Track: 2nd Year Data Engineering Internship Project: H3 — Real-Time Hashtag Pulse (Streaming Starter)
+## 🚨 Anomaly Detection Algorithm
 
-📜 License
+PulseLite implements a **sliding-window statistical anomaly detector**:
 
-MIT License — see LICENSE
+1. Calculates a rolling **5-minute baseline volume average** per topic ($V_{\text{avg}}$).
+2. Monitors current 1-minute post arrival rate ($V_{\text{current}}$).
+3. If $V_{\text{current}} \ge 3 \times V_{\text{avg}}$, an **anomaly alert** is triggered.
+4. Alerts write immediately to DuckDB and display as highlighted alert cards on the dashboard log.
 
-🙏 Acknowledgements
-TrendWatch (fictional client scenario) — internship problem framework
-Apache Kafka, DuckDB, Streamlit — open-source tools that made this possible
-Internship mentor — for guidance through every debugging session, especially the DuckDB concurrency saga
+> [!NOTE]
+> **Why this matters:** Real-time spike detection is a foundational pattern in streaming telemetry, useful for cyber threat detection, breaking news tracking, and outage monitoring.
+
+---
+
+## 🧠 Architecture Decision Records (ADRs)
+
+Key architectural choices documented during development:
+
+| ADR | Title | Decision Summary |
+| :--- | :--- | :--- |
+| [**ADR-01**](docs/ADR-01-data-source.md) | **Synthetic Data Generator** | Selected synthetic feed over Reddit API to avoid strict developer rate limits and token approval delays. |
+| [**ADR-02**](docs/ADR-02-duckdb-connections.md) | **Per-Write Connection Pattern** | Designed lightweight per-write connection lifecycles to maintain thread safety across concurrent workers. |
+| [**ADR-03**](docs/ADR-03-vader-sentiment.md) | **VADER NLP Classifier** | Chosen over heavy LLM/Transformers for zero latency overhead and lightweight CPU inference. |
+| [**ADR-04**](docs/ADR-04-duckdb-concurrency-fix.md) | **Concurrency Lock Management** | Implemented retry logic & read-only connections to prevent DuckDB database locks between consumer & UI. |
+
+---
+
+## ⚠️ Current Limitations & 🗺️ Roadmap
+
+| Category | Current State | Planned Production Extension |
+| :--- | :--- | :--- |
+| **Delivery Guarantee** | At-least-once delivery | End-to-end **Exactly-once** processing semantics |
+| **Watermarking** | Arrival time processing | Event-time windowing with **late-data handling** |
+| **Stream Joins** | Single stream processing | **Stream-stream joins** across user clickstreams |
+| **Engine** | Python Kafka Consumer | Migration to **Apache Flink / Spark Streaming** |
+| **Alerting** | Fixed $3\times$ static threshold | Adaptive **Z-score / EWMA** statistical models |
+
+---
+
+## 📄 License & Credits
+
+- **License**: Released under the **[MIT License](LICENSE)**.
+- **Author**: Created by **Madhav Sathyan** as part of the *Foundations of Data Engineering* internship track.
+- **Problem Statement**: **H3: Real-Time Hashtag Pulse**.
+
+---
+<div align="center">
+  <sub>Built with ❤️ using Python, Apache Kafka, DuckDB & Streamlit</sub>
+</div>

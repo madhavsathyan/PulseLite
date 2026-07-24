@@ -23,12 +23,11 @@ from datetime import datetime, timezone
 import duckdb
 from kafka import KafkaConsumer
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-
 import os
 KAFKA_BROKER = os.environ.get("KAFKA_BROKER", "localhost:9092")
+DB_PATH = os.environ.get("DB_PATH", "pulselite.db")
 KAFKA_TOPIC = "reddit-posts"
 CONSUMER_GROUP = "pulselite-processors"
-DB_PATH = os.environ.get("DB_PATH", "pulselite.db")
 
 DRIFT_WINDOW_SIZE = 50
 TOP_N_TOPICS = 5
@@ -40,7 +39,7 @@ analyzer = SentimentIntensityAnalyzer()
 HASHTAG_PATTERN = re.compile(r"#(\w+)")
 
 
-def run_with_retry(fn, max_attempts=5, base_delay=0.2):
+def run_with_retry(fn, max_attempts=10, base_delay=0.2):
     """Runs a DuckDB operation, retrying briefly if the file is
     momentarily locked by another process (e.g. the dashboard reading
     at the same instant). This is expected in a multi-process setup
@@ -51,7 +50,9 @@ def run_with_retry(fn, max_attempts=5, base_delay=0.2):
         try:
             return fn()
         except Exception as e:
-            if "lock" not in str(e).lower() or attempt == max_attempts:
+            err_str = str(e).lower()
+            is_lock_err = any(kw in err_str for kw in ["lock", "io error", "cannot open", "busy"])
+            if not is_lock_err or attempt == max_attempts:
                 raise
             time_module.sleep(base_delay * attempt)
 
@@ -112,17 +113,19 @@ def setup_database():
 
 
 def save_post(post, title, created_dt, bucket, sentiment_label, sentiment_scores, entities, offset):
-    with duckdb.connect(DB_PATH) as db:
-        db.execute("""
-            INSERT OR REPLACE INTO posts
-            (id, author, title, score, num_comments, created_utc,
-             minute_bucket, sentiment_label, sentiment_score, entities, kafka_offset)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, [
-            post["id"], post["author"], title, post["score"], post["num_comments"],
-            created_dt, bucket, sentiment_label, sentiment_scores["compound"],
-            entities, offset,
-        ])
+    def _do_save():
+        with duckdb.connect(DB_PATH) as db:
+            db.execute("""
+                INSERT OR REPLACE INTO posts
+                (id, author, title, score, num_comments, created_utc,
+                 minute_bucket, sentiment_label, sentiment_score, entities, kafka_offset)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, [
+                post["id"], post["author"], title, post["score"], post["num_comments"],
+                created_dt, bucket, sentiment_label, sentiment_scores["compound"],
+                entities, offset,
+            ])
+    run_with_retry(_do_save)
 
 
 def save_anomaly(topic, bucket, current_count, rolling_avg):

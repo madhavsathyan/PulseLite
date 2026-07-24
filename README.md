@@ -219,6 +219,20 @@ Key architectural choices documented during development:
 | [**ADR-04**](docs/ADR-04-duckdb-concurrency-fix.md) | **Concurrency Lock Management** | Implemented retry logic & read-only connections to prevent DuckDB database locks between consumer & UI. |
 
 ---
+💼 Resume Bullets
+
+- Built PulseLite, a real-time streaming pipeline processing social media
+  posts through Kafka, with VADER sentiment scoring, regex-based entity
+  extraction, rolling topic-drift detection, and volume anomaly alerts
+
+- Designed and containerized a 5-service pipeline (Kafka, Zookeeper,
+  producer, consumer, dashboard) with Docker Compose; diagnosed and
+  resolved a DuckDB concurrency bug causing consumer crash-loops via
+  connection-lifecycle management and retry-with-backoff logic
+
+- Documented 4 Architecture Decision Records covering data-source
+  tradeoffs, database concurrency, and model selection, and deployed a
+  live public demo on Streamlit Cloud
 
 ## ⚠️ Current Limitations & 🗺️ Roadmap
 
@@ -237,6 +251,12 @@ Key architectural choices documented during development:
 - **License**: Released under the **[MIT License](LICENSE)**.
 - **Author**: Created by **Madhav Sathyan** as part of the *Foundations of Data Engineering* internship track.
 - **Problem Statement**: **H3: Real-Time Hashtag Pulse**.
+
+---
+🙏 Acknowledgements
+TrendWatch (fictional client scenario) — internship problem framework
+Apache Kafka, DuckDB, Streamlit — open-source tools that made this possible
+Internship mentor — for guidance through every debugging session, especially the DuckDB concurrency saga
 
 ---
 <div align="center">
